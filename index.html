@@ -107,7 +107,6 @@
                     <div class="absolute right-2 bottom-2 text-gray-800 opacity-20"><i data-lucide="dollar-sign" class="w-16 h-16"></i></div>
                     <p class="text-xs font-medium text-gray-400 uppercase tracking-wider">Lucro Líquido</p>
                     <p class="text-2xl font-bold mt-2 text-emerald-400" id="card-lucro">R$ 0,00</p>
-                    <p class="text-[10px] text-gray-500 mt-1" id="sub-lucro">Considera apenas caixas fechados</p>
                 </div>
                 <div class="bg-darkCard p-5 rounded-xl border border-darkBorder relative overflow-hidden">
                     <div class="absolute right-2 bottom-2 text-gray-800 opacity-20"><i data-lucide="credit-card" class="w-16 h-16"></i></div>
@@ -555,16 +554,6 @@
                                 <label class="block text-xs font-medium text-gray-400 mb-1">Qtd Doada</label>
                                 <input type="number" id="des-doacao-qtd" value="1" min="1" class="w-full bg-gray-900 border border-darkBorder rounded-lg px-3 py-1.5 text-sm text-white">
                             </div>
-                        </div>
-                        <div id="des-origem-container">
-                            <label class="block text-xs font-medium text-gray-400 mb-1">De onde saiu o dinheiro?</label>
-                            <select id="des-origem" class="w-full bg-gray-900 border border-darkBorder rounded-lg px-3 py-1.5 text-sm text-white">
-                                <option value="dinheiro">💵 Dinheiro físico do caixa</option>
-                                <option value="pix">📱 Pix do caixa/conta do negócio</option>
-                                <option value="maquininha">💳 Maquininha / saldo de cartão</option>
-                                <option value="externo">🤝 Terceiros (ex: meu pai pagou) — não sai do caixa</option>
-                            </select>
-                            <p class="text-[9px] text-gray-500 mt-1">Se foi pago por terceiros, o valor continua reduzindo o Lucro Líquido, mas não desconta do seu "Valor em Caixa".</p>
                         </div>
                         <p id="des-tipo-info" class="text-[10px] text-gray-500 bg-gray-900 p-2 rounded">💸 <b>Despesa:</b> registra um custo operacional (energia, aluguel, etc). Reduz o lucro líquido.</p>
                         <button type="submit" class="w-full bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-medium py-2 rounded-lg transition-all" id="des-btn-submit">Registrar Despesa</button>
@@ -1232,16 +1221,9 @@
                 // (usuário está digitando texto, valor, nome, etc.)
                 if (tag === 'input' || tag === 'textarea' || tag === 'select') return;
 
-                // Se o foco está em um botão/link (ex: usuário navegando com Tab e apertando
-                // Enter/Espaço para clicar) → não intercepta, para não travar a navegação por teclado.
-                if (tag === 'button' || tag === 'a') return;
-
                 // A partir daqui: sem foco em campo editável → captura como leitor de barras
                 if (e.key === 'Enter') {
-                    // Só intercepta o Enter se já houver caracteres acumulados no buffer
-                    // (ou seja, uma leitura de código de barras parece estar em andamento).
-                    // Caso contrário, deixa o Enter seguir seu comportamento normal na página.
-                    if (barcodeBuffer.trim().length === 0) return;
+                    // Enter encerra a leitura
                     e.preventDefault();
                     const codigo = barcodeBuffer.trim();
                     barcodeBuffer = '';
@@ -1543,23 +1525,13 @@
                 data_entrada: new Date().toISOString()
             };
 
-            // Limpa lotes zerados ANTIGOS do mesmo produto (ex: código de barras diferente,
-            // mas é o mesmo item já cadastrado antes). O custo FIFO desses lotes já foi
-            // totalmente consumido nas vendas passadas (fica registrado na própria venda),
-            // então eles só ficam ocupando espaço e gerando alerta falso de "Esgotado" agora
-            // que o produto acabou de ser reabastecido.
-            const qtdLotesZeradosRemovidos = db.estoque_lotes.filter(l => l.produto_id === produto.id && l.quantidade_atual === 0).length;
-            db.estoque_lotes = db.estoque_lotes.filter(l => !(l.produto_id === produto.id && l.quantidade_atual === 0));
-
             db.estoque_lotes.push(lote);
             saveDB();
             document.getElementById('form-estoque').reset();
             ajustarFormularioEstoque();
             prevenirNomeFantasma();
             renderEstoqueView();
-            alert(qtdLotesZeradosRemovidos > 0
-                ? `Mercadoria vinculada ao lote FIFO com sucesso! ${qtdLotesZeradosRemovidos} lote(s) esgotado(s) antigo(s) desse produto foram limpos automaticamente.`
-                : 'Mercadoria vinculada ao lote FIFO com sucesso!');
+            alert('Mercadoria vinculada ao lote FIFO com sucesso!');
         }
 
         function removerLoteEstoque(loteId) {
@@ -1621,8 +1593,6 @@
 
             doacaoEl.classList.add('hidden');
             valorCont.classList.remove('hidden');
-            const origemEl = document.getElementById('des-origem-container');
-            origemEl.classList.add('hidden');
 
             if (tipo === 'despesa') {
                 infoEl.innerHTML = '💸 <b>Despesa:</b> registra um custo operacional (energia, aluguel, etc). Reduz o lucro líquido.';
@@ -1630,7 +1600,6 @@
                 btnEl.className = 'w-full bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-medium py-2 rounded-lg transition-all';
                 labelDesc.innerText = 'Descrição do gasto';
                 document.getElementById('des-valor').required = true;
-                origemEl.classList.remove('hidden');
             } else if (tipo === 'aporte') {
                 infoEl.innerHTML = '💰 <b>Aporte:</b> seu pai ou outra pessoa comprou mercadoria para o negócio. O valor entra como investimento e o estoque deve ser lançado normalmente. Registre aqui para controle.';
                 btnEl.innerText = 'Registrar Aporte';
@@ -1712,13 +1681,11 @@
                 });
             } else {
                 if (val <= 0) { alert('Informe o valor da despesa.'); return; }
-                const origem = document.getElementById('des-origem').value;
                 db.despesas_gerais.push({
                     id: 'des_' + Date.now(),
                     tipo: 'despesa',
                     descricao: desc,
                     valor: val,
-                    origem: origem,
                     data: new Date().toISOString()
                 });
             }
@@ -1728,7 +1695,6 @@
             document.getElementById('des-valor').value = '';
             document.getElementById('des-doacao-nome').value = '';
             document.getElementById('des-doacao-qtd').value = '1';
-            document.getElementById('des-origem').value = 'dinheiro';
             renderDespesasView();
             renderEstoqueView();
             alert('Lançamento registrado com sucesso!');
@@ -1755,7 +1721,6 @@
         function renderDespesasView() {
             const corpo = document.getElementById('lista-despesas-corpo');
             corpo.innerHTML = '';
-            const dataAberturaTurno = db.caixa_atual.aberto ? new Date(db.caixa_atual.data_abertura) : null;
             db.despesas_gerais.forEach(d => {
                 const tr = document.createElement('tr');
                 tr.className = "border-b border-darkBorder text-xs";
@@ -1767,19 +1732,9 @@
                     : d.tipo === 'doacao'
                     ? `<span class="text-purple-400">-estoque R$ ${d.valor.toFixed(2)}</span>`
                     : `<span class="text-red-400">- R$ ${d.valor.toFixed(2)}</span>`;
-                // Despesa (tipo 'despesa') lançada durante o turno de caixa atualmente aberto ainda
-                // não foi descontada do Lucro Líquido — só entra no cálculo quando o caixa fechar.
-                const ehPendente = (d.tipo === 'despesa' || !d.tipo) && dataAberturaTurno && new Date(d.data) >= dataAberturaTurno;
-                const pendenteBadge = ehPendente
-                    ? `<span class="ml-1 text-[9px] text-amber-400 border border-amber-500/40 rounded px-1 py-0.5" title="Será descontada do Lucro Líquido somente após o fechamento do caixa">⏳ pendente</span>`
-                    : '';
-                const origemLabels = { dinheiro: '💵 Dinheiro', pix: '📱 Pix', maquininha: '💳 Maquininha', externo: '🤝 Terceiros' };
-                const origemBadge = (d.tipo === 'despesa' || !d.tipo) && d.origem
-                    ? `<span class="ml-1 text-[9px] text-gray-400 border border-darkBorder rounded px-1 py-0.5" title="${d.origem === 'externo' ? 'Pago por terceiros — não desconta do Valor em Caixa' : 'Saiu do caixa'}">${origemLabels[d.origem] || d.origem}</span>`
-                    : '';
                 tr.innerHTML = `
                     <td class="p-3">${new Date(d.data).toLocaleDateString('pt-BR')}</td>
-                    <td class="p-3">${tipoLabel}${pendenteBadge}${origemBadge}</td>
+                    <td class="p-3">${tipoLabel}</td>
                     <td class="p-3 text-white">${d.descricao}</td>
                     <td class="p-3 text-right">${valorExib}</td>
                     <td class="p-3 text-center">
@@ -1923,7 +1878,12 @@
 
             if(query.length === 0) { dropdown.classList.add('hidden'); return; }
 
-            const matches = db.produtos.filter(p => p.nome.toLowerCase().includes(queryLower) || (p.codigo_barras && p.codigo_barras.includes(query)));
+            const matches = db.produtos.filter(p => {
+                const bateNome = p.nome.toLowerCase().includes(queryLower) || (p.codigo_barras && p.codigo_barras.includes(query));
+                if(!bateNome) return false;
+                const totalEstoque = db.estoque_lotes.filter(l => l.produto_id === p.id).reduce((acc, l) => acc + l.quantidade_atual, 0);
+                return totalEstoque > 0;
+            });
 
             // Código de barras exato → adiciona direto ao carrinho
             const exato = encontrarProdutoPorCodigoBarras(query);
@@ -2067,9 +2027,7 @@
                 precoVendaAplicado = ultimoLoteLancado.venda_caixa; 
                 precoTotalItem = precoVendaAplicado * qtd;
                 labelModo = "Caixa Fechada";
-                // Usa o itens_por_caixa real do lote (ex: fardo de 6, caixa de 24) em vez de
-                // assumir sempre 12 — evita deduzir a quantidade errada do estoque físico.
-                calculoUnidadesEstoqueDeduzir = qtd * (ultimoLoteLancado.itens_por_caixa || 12);
+                calculoUnidadesEstoqueDeduzir = qtd * 12;
             } else if(modo === 'dose') {
                 const mlDose = parseInt(document.getElementById('pdv-dose-tamanho').value);
                 if(mlDose === 80 && ultimoLoteLancado.venda_dose50 > 0) {
@@ -2233,42 +2191,6 @@
             finalizarVendaPDV();
         }
 
-        // ======= DEVOLUÇÃO DE ESTOQUE (usada em estorno de venda e exclusão de caixa) =======
-        // Tenta devolver cada unidade ao lote de origem. Se o lote original não existir mais
-        // (ex: foi excluído manualmente, ou limpo automaticamente por ter zerado antes de um
-        // reabastecimento), recria um lote equivalente com o mesmo custo em vez de perder a
-        // devolução silenciosamente. Retorna quantos lotes precisaram ser recriados, para avisar o usuário.
-        function devolverItensAoEstoque(lotesAfetados) {
-            let lotesRecriados = 0;
-            (lotesAfetados || []).forEach(snap => {
-                const lote = db.estoque_lotes.find(l => l.id === snap.lote_id);
-                if(lote) {
-                    lote.quantidade_atual += snap.qtd;
-                } else if(snap.produto_id) {
-                    // Lote original não existe mais: recria um novo lote para não perder a devolução.
-                    // Herda preços de venda de outro lote do mesmo produto, se houver algum cadastrado.
-                    const loteReferencia = db.estoque_lotes.find(l => l.produto_id === snap.produto_id);
-                    db.estoque_lotes.push({
-                        id: 'lote_' + Date.now() + Math.random().toString(36).substr(2, 5),
-                        produto_id: snap.produto_id,
-                        custo_unitario: snap.custo_unitario || 0,
-                        venda_unitario: loteReferencia?.venda_unitario || 0,
-                        itens_por_caixa: loteReferencia?.itens_por_caixa || 12,
-                        venda_caixa: loteReferencia?.venda_caixa || 0,
-                        venda_dose50: loteReferencia?.venda_dose50 || 0,
-                        venda_dose150: loteReferencia?.venda_dose150 || 0,
-                        venda_dose100: loteReferencia?.venda_dose100 || 0,
-                        quantidade_inicial: snap.qtd,
-                        quantidade_atual: snap.qtd,
-                        data_entrada: new Date().toISOString(),
-                        recriado_por_estorno: true
-                    });
-                    lotesRecriados++;
-                }
-            });
-            return lotesRecriados;
-        }
-
         function finalizarVendaPDV() {
             if(pdvCarrinho.length === 0) { alert('Adicione pelo menos um item ao pedido.'); return; }
             
@@ -2315,12 +2237,12 @@
                     if(lote.quantidade_atual >= unidadesPendentesDeducao) {
                         custoVinculadoAoItem += unidadesPendentesDeducao * lote.custo_unitario;
                         lote.quantidade_atual -= unidadesPendentesDeducao;
-                        itensDeducoesExecutadasSnapshot.push({ lote_id: lote.id, qtd: unidadesPendentesDeducao, produto_id: item.produto_id, custo_unitario: lote.custo_unitario });
+                        itensDeducoesExecutadasSnapshot.push({ lote_id: lote.id, qtd: unidadesPendentesDeducao });
                         unidadesPendentesDeducao = 0;
                     } else {
                         custoVinculadoAoItem += lote.quantidade_atual * lote.custo_unitario;
                         unidadesPendentesDeducao -= lote.quantidade_atual;
-                        itensDeducoesExecutadasSnapshot.push({ lote_id: lote.id, qtd: lote.quantidade_atual, produto_id: item.produto_id, custo_unitario: lote.custo_unitario });
+                        itensDeducoesExecutadasSnapshot.push({ lote_id: lote.id, qtd: lote.quantidade_atual });
                         lote.quantidade_atual = 0;
                     }
                 }
@@ -2352,18 +2274,18 @@
             if(!confirm('Deseja realmente cancelar esta venda? Todos os itens retornarão aos seus respectivos lotes de origem no estoque.')) return;
 
             const venda = db.caixa_atual.vendas.find(v => v.id === vendaId);
-            let lotesRecriados = 0;
             if(venda && venda.lotes_afetados) {
-                lotesRecriados = devolverItensAoEstoque(venda.lotes_afetados);
+                venda.lotes_afetados.forEach(snap => {
+                    const lote = db.estoque_lotes.find(l => l.id === snap.lote_id);
+                    if(lote) lote.quantidade_atual += snap.qtd; 
+                });
             }
 
             db.caixa_atual.vendas = db.caixa_atual.vendas.filter(v => v.id !== vendaId);
             saveDB();
             renderLogsCaixaAtual();
             renderEstoqueView();
-            alert(lotesRecriados > 0
-                ? `Venda cancelada e estoque recomposto! Obs: ${lotesRecriados} lote(s) original(is) já não existiam mais e foram recriados para não perder a devolução.`
-                : 'Venda cancelada e estoque recomposto com sucesso.');
+            alert('Venda cancelada e estoque recomposto com sucesso.');
         }
 
         function renderLogsCaixaAtual() {
@@ -2438,11 +2360,13 @@
             )) return;
 
             // Devolver itens ao estoque via lotes_afetados (mesma lógica do estornarVendaCaixa)
-            let lotesRecriados = 0;
             if(caixaAlvo.vendas && caixaAlvo.vendas.length > 0) {
                 caixaAlvo.vendas.forEach(venda => {
                     if(venda.lotes_afetados && venda.lotes_afetados.length > 0) {
-                        lotesRecriados += devolverItensAoEstoque(venda.lotes_afetados);
+                        venda.lotes_afetados.forEach(snap => {
+                            const lote = db.estoque_lotes.find(l => l.id === snap.lote_id);
+                            if(lote) lote.quantidade_atual += snap.qtd;
+                        });
                     }
                 });
             }
@@ -2452,9 +2376,7 @@
             saveDB();
             renderDashboard();
             renderEstoqueView();
-            alert(lotesRecriados > 0
-                ? `✅ Caixa "${caixaId}" apagado! Os itens foram devolvidos ao estoque (${lotesRecriados} lote(s) precisaram ser recriados porque o original já não existia mais).`
-                : `✅ Caixa "${caixaId}" apagado! Os itens foram devolvidos ao estoque.`);
+            alert(`✅ Caixa "${caixaId}" apagado! Os itens foram devolvidos ao estoque.`);
         }
 
         function fecharModalValorCaixa() {
@@ -2523,11 +2445,10 @@
             });
 
             // Despesas lançadas a partir da abertura deste caixa
-            // (pagas por terceiros/origem 'externo' não descontam, pois não saíram do caixa físico)
             const dataAbertura = new Date(cx.data_abertura);
             dataAbertura.setHours(0, 0, 0, 0);
             const totalDespesasPagas = db.despesas_gerais
-                .filter(d => (d.tipo === 'despesa' || !d.tipo) && d.origem !== 'externo' && new Date(d.data) >= dataAbertura)
+                .filter(d => (d.tipo === 'despesa' || !d.tipo) && new Date(d.data) >= dataAbertura)
                 .reduce((acc, d) => acc + d.valor, 0);
 
             const subtotal = fundoInicial + especie + maq1Debito + maq1Credito + maq1Pix + maq2Debito + maq2Credito + maq2Pix;
@@ -2680,19 +2601,10 @@
             else if(currentPeriodFilter === '7d') limite.setDate(agora.getDate() - 7);
             else if(currentPeriodFilter === '30d') limite.setDate(agora.getDate() - 30);
             else if(currentPeriodFilter === 'custom') {
-                const startVal = document.getElementById('filter-start-date').value;
-                const endVal = document.getElementById('filter-end-date').value;
-                if(!startVal || !endVal) return registros;
-                // IMPORTANTE: "YYYY-MM-DD" vindo do <input type="date"> é interpretado pelo
-                // JS como UTC meia-noite (new Date("2026-07-07") = 07/07 00:00 UTC). No fuso
-                // do Brasil (UTC-3) isso vira 06/07 21:00 local — e ao aplicar .setHours(23,59,59)
-                // em cima disso, o dia final selecionado pelo usuário ficava todo de fora do filtro.
-                // Por isso construímos a data manualmente a partir dos componentes locais.
-                const [sy, sm, sd] = startVal.split('-').map(Number);
-                const [ey, em, ed] = endVal.split('-').map(Number);
-                const start = new Date(sy, sm - 1, sd, 0, 0, 0, 0);
-                const end = new Date(ey, em - 1, ed, 23, 59, 59, 999);
+                const start = new Date(document.getElementById('filter-start-date').value);
+                const end = new Date(document.getElementById('filter-end-date').value);
                 if(isNaN(start) || isNaN(end)) return registros;
+                end.setHours(23,59,59,999);
                 return registros.filter(r => {
                     const d = new Date(r.data_fechamento || r.data);
                     return d >= start && d <= end;
@@ -2940,12 +2852,10 @@
                 });
 
                 // Despesas lançadas hoje (que saíram do caixa deste turno)
-                // Despesas pagas por terceiros (origem 'externo', ex: pai pagou) não saem do caixa físico,
-                // então não são descontadas aqui — mas continuam reduzindo o Lucro Líquido normalmente.
                 const dataAbertura = new Date(cx.data_abertura);
                 dataAbertura.setHours(0, 0, 0, 0);
                 db.despesas_gerais
-                    .filter(d => (d.tipo === 'despesa' || !d.tipo) && d.origem !== 'externo' && new Date(d.data) >= dataAbertura)
+                    .filter(d => (d.tipo === 'despesa' || !d.tipo) && new Date(d.data) >= dataAbertura)
                     .forEach(d => { vcDespesas += d.valor; });
                 valorEmCaixa -= vcDespesas;
             }
@@ -2953,19 +2863,7 @@
             // Investimento = valor atual em estoque (quantidade_atual * custo_unitario)
             const investimentoEstoqueAtual = db.estoque_lotes.reduce((acc, curr) => acc + (curr.quantidade_atual * curr.custo_unitario), 0);
             // Only real operational expenses (not aportes or doações) reduce lucro
-            // IMPORTANTE: despesas lançadas DURANTE o turno de caixa aberto ainda não entram no
-            // Lucro Líquido. Elas ficam "pendentes" e só passam a valer quando o caixa é fechado —
-            // no mesmo momento em que o faturamento daquele turno também passa a contar.
-            // Isso evita que o lucro fique negativo artificialmente por causa de despesas pagas
-            // hoje enquanto as vendas de hoje ainda não foram fechadas.
-            const dataAberturaTurno = db.caixa_atual.aberto ? new Date(db.caixa_atual.data_abertura) : null;
-            const despesasRealizadas = dataAberturaTurno
-                ? despesasFiltradas.filter(d => new Date(d.data) < dataAberturaTurno)
-                : despesasFiltradas;
-            const custoTotalDespesasGerais = despesasRealizadas.filter(d => d.tipo === 'despesa' || !d.tipo).reduce((acc, d) => acc + d.valor, 0);
-            const despesasPendentesTurno = dataAberturaTurno
-                ? despesasFiltradas.filter(d => new Date(d.data) >= dataAberturaTurno && (d.tipo === 'despesa' || !d.tipo)).reduce((acc, d) => acc + d.valor, 0)
-                : 0;
+            const custoTotalDespesasGerais = despesasFiltradas.filter(d => d.tipo === 'despesa' || !d.tipo).reduce((acc, d) => acc + d.valor, 0);
             const investimentoTotalConsolidado = investimentoEstoqueAtual + custoTotalDespesasGerais;
 
             // Lucro líquido = faturamento - custo FIFO - taxas maquininha - cofrinho (reservado) - despesas gerais
@@ -2975,14 +2873,6 @@
             document.getElementById('card-faturamento').innerText = `R$ ${faturamento.toFixed(2)}`;
             document.getElementById('card-investimento').innerText = `R$ ${investimentoEstoqueAtual.toFixed(2)}`;
             document.getElementById('card-lucro').innerText = `R$ ${lucroLiquido.toFixed(2)}`;
-            const subLucroEl = document.getElementById('sub-lucro');
-            if (despesasPendentesTurno > 0) {
-                subLucroEl.innerText = `⏳ R$ ${despesasPendentesTurno.toFixed(2)} em despesas do turno aberto ainda não computadas`;
-                subLucroEl.className = 'text-[10px] text-amber-400 mt-1';
-            } else {
-                subLucroEl.innerText = 'Considera apenas caixas fechados';
-                subLucroEl.className = 'text-[10px] text-gray-500 mt-1';
-            }
             const prazoD = db.config.maquininha1?.prazoDebito ?? 1;
             const prazoC = db.config.maquininha1?.prazoCredito ?? 30;
             const totalReceber = totalA_ReceberDebito + totalA_ReceberCredito;
@@ -3106,7 +2996,6 @@
             let maqLiquidado = 0;  // cartões já liquidados (prazo <= hoje)
             let maqPendente = 0;   // cartões ainda não liquidados
             let totalTaxas = 0;
-            let totalCofrinho = 0; // reservado pelo % do cofrinho (não conta como lucro disponível)
 
             const pagBreakdown = {}; // { label: { bruto, liquido, liquidado, prazo } }
 
@@ -3158,7 +3047,6 @@
                     const liquido = p.valor - taxa;
                     const liquidoParaCaixa = liquido * (1 - cofPerc);
                     totalTaxas += taxa;
-                    totalCofrinho += liquido * cofPerc;
 
                     // Verifica se já liquidou: prazo a partir da data de FECHAMENTO, comparado com HOJE
                     const dataReceb = adicionarDiasUteis(dataFechamento, prazo);
@@ -3175,26 +3063,17 @@
             });
 
             // ── Despesas deste turno ──────────────────────────────────────────
-            // Despesas pagas por terceiros (origem 'externo') não saíram do caixa físico,
-            // então não entram no "Total disponível" do fechamento — mas continuam
-            // reduzindo o Lucro Líquido normalmente (é custo do negócio de qualquer forma).
             const dataAbertura = new Date(cx.data_abertura);
             dataAbertura.setHours(0, 0, 0, 0);
             // Usa a data de FECHAMENTO original (sem zerar horas) como limite superior
             // para não perder despesas lançadas no mesmo dia do fechamento
             const dataFechamentoOriginal = new Date(cx.data_fechamento);
-            const despesasDoTurno = db.despesas_gerais
-                .filter(d => (d.tipo === 'despesa' || !d.tipo) && new Date(d.data) >= dataAbertura && new Date(d.data) <= dataFechamentoOriginal);
-            const totalDespesas = despesasDoTurno
-                .filter(d => d.origem !== 'externo')
+            const totalDespesas = db.despesas_gerais
+                .filter(d => (d.tipo === 'despesa' || !d.tipo) && new Date(d.data) >= dataAbertura && new Date(d.data) <= dataFechamentoOriginal)
                 .reduce((acc, d) => acc + d.valor, 0);
-            const totalDespesasParaLucro = despesasDoTurno.reduce((acc, d) => acc + d.valor, 0);
 
             const totalLiquidadoHoje = cx.saldo_inicial + especie + maqLiquidado - totalDespesas;
-            // Mesma fórmula do card "Lucro Líquido" do Dashboard: também desconta
-            // o valor reservado no cofrinho e as despesas do turno (inclusive as pagas
-            // por terceiros, que continuam sendo custo do negócio mesmo sem sair do caixa).
-            const lucro = faturamento - custo - totalTaxas - totalCofrinho - totalDespesasParaLucro;
+            const lucro = faturamento - custo - totalTaxas;
 
             // ── Cards de resumo ───────────────────────────────────────────────
             const cards = document.getElementById('modal-cards-resumo');
@@ -3217,7 +3096,7 @@
                 <div class="bg-gray-900 p-3 rounded border border-darkBorder text-xs">
                     <span class="text-gray-400 block mb-1">💰 Lucro Líquido</span>
                     <b class="text-sm text-purple-400">R$ ${lucro.toFixed(2)}</b>
-                    <p class="text-[10px] text-gray-500 mt-0.5">${faturamento > 0 ? ((lucro/faturamento)*100).toFixed(1) : 0}% margem · Cofrinho: R$ ${totalCofrinho.toFixed(2)} · Desp: R$ ${totalDespesasParaLucro.toFixed(2)}</p>
+                    <p class="text-[10px] text-gray-500 mt-0.5">${faturamento > 0 ? ((lucro/faturamento)*100).toFixed(1) : 0}% margem</p>
                 </div>
             `;
 
