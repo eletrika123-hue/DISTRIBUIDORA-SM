@@ -555,6 +555,16 @@
                                 <input type="number" id="des-doacao-qtd" value="1" min="1" class="w-full bg-gray-900 border border-darkBorder rounded-lg px-3 py-1.5 text-sm text-white">
                             </div>
                         </div>
+                        <div id="des-origem-container">
+                            <label class="block text-xs font-medium text-gray-400 mb-1">De onde saiu o dinheiro?</label>
+                            <select id="des-origem" onchange="atualizarInfoOrigemDespesa()" class="w-full bg-gray-900 border border-darkBorder rounded-lg px-3 py-1.5 text-sm text-white">
+                                <option value="dinheiro">💵 Dinheiro em Espécie (caixa)</option>
+                                <option id="des-opt-maq1" value="maquininha1">💳 Maquininha 1 (TON)</option>
+                                <option id="des-opt-maq2" value="maquininha2">💳 Maquininha 2 (Mercado Pago)</option>
+                                <option value="terceiro">🤝 Terceiro (não saiu do meu caixa)</option>
+                            </select>
+                            <p id="des-origem-info" class="text-[10px] text-gray-500 mt-1"></p>
+                        </div>
                         <p id="des-tipo-info" class="text-[10px] text-gray-500 bg-gray-900 p-2 rounded">💸 <b>Despesa:</b> registra um custo operacional (energia, aluguel, etc). Reduz o lucro líquido.</p>
                         <button type="submit" class="w-full bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-medium py-2 rounded-lg transition-all" id="des-btn-submit">Registrar Despesa</button>
                     </form>
@@ -1358,6 +1368,10 @@
             if(oc1) oc1.innerText = `Crédito - ${n1}`;
             if(od2) od2.innerText = `Débito - ${n2}`;
             if(oc2) oc2.innerText = `Crédito - ${n2}`;
+            const desOpt1 = document.getElementById('des-opt-maq1');
+            const desOpt2 = document.getElementById('des-opt-maq2');
+            if(desOpt1) desOpt1.innerText = `💳 Maquininha 1 (${n1})`;
+            if(desOpt2) desOpt2.innerText = `💳 Maquininha 2 (${n2})`;
             const pixB1 = document.getElementById('pdv-btn-pix-maq1');
             const pixB2 = document.getElementById('pdv-btn-pix-maq2');
             if(pixB1) pixB1.innerText = `📱 PIX ${n1} (${db.config.maquininha1?.taxaPix || 0.99}%)`;
@@ -1551,7 +1565,20 @@
                 return;
             }
 
-            const lotesOrdenados = [...db.estoque_lotes].sort((a, b) => {
+            // Um lote zerado só continua aparecendo na lista se o produto ainda não tiver
+            // nenhum lote com estoque ativo (senão o aviso de "zerado" fica preso na tela
+            // mesmo depois de você já ter reabastecido o produto com um lote novo).
+            const produtosComEstoqueAtivo = new Set(
+                db.estoque_lotes.filter(l => l.quantidade_atual > 0).map(l => l.produto_id)
+            );
+            const lotesVisiveis = db.estoque_lotes.filter(l => l.quantidade_atual > 0 || !produtosComEstoqueAtivo.has(l.produto_id));
+
+            if(lotesVisiveis.length === 0) {
+                corpo.innerHTML = `<tr><td colspan="6" class="p-4 text-center text-gray-500">Nenhum lote em estoque.</td></tr>`;
+                return;
+            }
+
+            const lotesOrdenados = [...lotesVisiveis].sort((a, b) => {
                 const nomeA = (db.produtos.find(p => p.id === a.produto_id)?.nome || '').toLowerCase();
                 const nomeB = (db.produtos.find(p => p.id === b.produto_id)?.nome || '').toLowerCase();
                 return nomeA.localeCompare(nomeB, 'pt-BR');
@@ -1590,9 +1617,11 @@
             const doacaoEl = document.getElementById('des-doacao-produto');
             const valorCont = document.getElementById('des-valor-container');
             const labelDesc = document.getElementById('des-label-desc');
+            const origemCont = document.getElementById('des-origem-container');
 
             doacaoEl.classList.add('hidden');
             valorCont.classList.remove('hidden');
+            origemCont.classList.add('hidden');
 
             if (tipo === 'despesa') {
                 infoEl.innerHTML = '💸 <b>Despesa:</b> registra um custo operacional (energia, aluguel, etc). Reduz o lucro líquido.';
@@ -1600,6 +1629,8 @@
                 btnEl.className = 'w-full bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-medium py-2 rounded-lg transition-all';
                 labelDesc.innerText = 'Descrição do gasto';
                 document.getElementById('des-valor').required = true;
+                origemCont.classList.remove('hidden');
+                atualizarInfoOrigemDespesa();
             } else if (tipo === 'aporte') {
                 infoEl.innerHTML = '💰 <b>Aporte:</b> seu pai ou outra pessoa comprou mercadoria para o negócio. O valor entra como investimento e o estoque deve ser lançado normalmente. Registre aqui para controle.';
                 btnEl.innerText = 'Registrar Aporte';
@@ -1621,6 +1652,20 @@
                 btnEl.className = 'w-full bg-pink-600 hover:bg-pink-500 text-white text-sm font-medium py-2 rounded-lg transition-all';
                 labelDesc.innerText = 'Motivo / Destino da retirada';
                 document.getElementById('des-valor').required = true;
+            }
+        }
+
+        function atualizarInfoOrigemDespesa() {
+            const origem = document.getElementById('des-origem').value;
+            const info = document.getElementById('des-origem-info');
+            if(!info) return;
+            if(origem === 'dinheiro') {
+                info.innerHTML = 'Reduz o lucro líquido e sai do dinheiro em espécie do caixa.';
+            } else if(origem === 'maquininha1' || origem === 'maquininha2') {
+                const nome = origem === 'maquininha1' ? (db.config.maquininha1?.nome || 'Maquininha 1') : (db.config.maquininha2?.nome || 'Maquininha 2');
+                info.innerHTML = `Reduz o lucro líquido e sai do saldo da ${nome} (não mexe no dinheiro em espécie).`;
+            } else if(origem === 'terceiro') {
+                info.innerHTML = 'Não reduz seu lucro líquido nem seu caixa — só fica registrada para histórico/controle.';
             }
         }
 
@@ -1681,9 +1726,11 @@
                 });
             } else {
                 if (val <= 0) { alert('Informe o valor da despesa.'); return; }
+                const origem = document.getElementById('des-origem').value || 'dinheiro';
                 db.despesas_gerais.push({
                     id: 'des_' + Date.now(),
                     tipo: 'despesa',
+                    origem: origem,
                     descricao: desc,
                     valor: val,
                     data: new Date().toISOString()
@@ -1697,6 +1744,7 @@
             document.getElementById('des-doacao-qtd').value = '1';
             renderDespesasView();
             renderEstoqueView();
+            renderDashboard();
             alert('Lançamento registrado com sucesso!');
         }
 
@@ -1732,9 +1780,22 @@
                     : d.tipo === 'doacao'
                     ? `<span class="text-purple-400">-estoque R$ ${d.valor.toFixed(2)}</span>`
                     : `<span class="text-red-400">- R$ ${d.valor.toFixed(2)}</span>`;
+                let origemTag = '';
+                if(d.tipo === 'despesa') {
+                    const origem = d.origem || 'dinheiro';
+                    const nomeMaq1 = db.config.maquininha1?.nome || 'Maquininha 1';
+                    const nomeMaq2 = db.config.maquininha2?.nome || 'Maquininha 2';
+                    const origemLabels = {
+                        dinheiro: '💵 Dinheiro',
+                        maquininha1: `💳 ${nomeMaq1}`,
+                        maquininha2: `💳 ${nomeMaq2}`,
+                        terceiro: '🤝 Terceiro'
+                    };
+                    origemTag = `<br><span class="text-[10px] text-gray-500">${origemLabels[origem] || origemLabels.dinheiro}</span>`;
+                }
                 tr.innerHTML = `
                     <td class="p-3">${new Date(d.data).toLocaleDateString('pt-BR')}</td>
-                    <td class="p-3">${tipoLabel}</td>
+                    <td class="p-3">${tipoLabel}${origemTag}</td>
                     <td class="p-3 text-white">${d.descricao}</td>
                     <td class="p-3 text-right">${valorExib}</td>
                     <td class="p-3 text-center">
@@ -2855,15 +2916,16 @@
                 const dataAbertura = new Date(cx.data_abertura);
                 dataAbertura.setHours(0, 0, 0, 0);
                 db.despesas_gerais
-                    .filter(d => (d.tipo === 'despesa' || !d.tipo) && new Date(d.data) >= dataAbertura)
+                    .filter(d => (d.tipo === 'despesa' || !d.tipo) && d.origem !== 'terceiro' && new Date(d.data) >= dataAbertura)
                     .forEach(d => { vcDespesas += d.valor; });
                 valorEmCaixa -= vcDespesas;
             }
 
             // Investimento = valor atual em estoque (quantidade_atual * custo_unitario)
             const investimentoEstoqueAtual = db.estoque_lotes.reduce((acc, curr) => acc + (curr.quantidade_atual * curr.custo_unitario), 0);
-            // Only real operational expenses (not aportes or doações) reduce lucro
-            const custoTotalDespesasGerais = despesasFiltradas.filter(d => d.tipo === 'despesa' || !d.tipo).reduce((acc, d) => acc + d.valor, 0);
+            // Only real operational expenses (not aportes ou doações) reduce lucro.
+            // Despesas pagas por terceiro não saem do seu bolso/caixa, então não reduzem o lucro.
+            const custoTotalDespesasGerais = despesasFiltradas.filter(d => (d.tipo === 'despesa' || !d.tipo) && d.origem !== 'terceiro').reduce((acc, d) => acc + d.valor, 0);
             const investimentoTotalConsolidado = investimentoEstoqueAtual + custoTotalDespesasGerais;
 
             // Lucro líquido = faturamento - custo FIFO - taxas maquininha - cofrinho (reservado) - despesas gerais
